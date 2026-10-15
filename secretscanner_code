@@ -1,0 +1,104 @@
+import argparse
+import re
+import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s"
+)
+
+patterns = {
+    "AWS Key": r"AKIA[0-9A-Z]{16}",
+    "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
+    "GitHub Token": r"ghp_[A-Za-z0-9]{36}",
+    "JWT Token": r"eyJ[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+\.[A-Za-z0-9_\-=]+",
+    "Password": r"(?i)(password|passwd|pwd)\s*[:=]\s*[\"']?[^\"'\s]+",
+    "Private Key": r"-----BEGIN .* PRIVATE KEY-----"
+}
+
+
+def scan_file(filepath):
+    findings = []
+
+    try:
+        with open(filepath, "r", errors="ignore") as file:
+            for line_num, line in enumerate(file, start=1):
+                for secret_type, pattern in patterns.items():
+                    for match in re.finditer(pattern, line):
+                        findings.append({
+                            "file": filepath,
+                            "line": line_num,
+                            "type": secret_type,
+                            "match": match.group()
+                        })
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+
+    return findings
+
+
+def scan_directory(directory):
+    findings = []
+
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            findings.extend(
+                scan_file(os.path.join(root, file))
+            )
+
+    return findings
+
+
+def report(findings):
+
+    print("\nSECRET SCAN REPORT\n")
+
+    if not findings:
+        print("No secrets found.")
+        return
+
+    for item in findings:
+        print(
+            f"File: {item['file']} | "
+            f"Line: {item['line']} | "
+            f"Type: {item['type']} | "
+            f"Match: {item['match']}"
+        )
+
+    print(f"\nTotal Findings: {len(findings)}")
+
+
+def main():
+
+    parser = argparse.ArgumentParser(
+        description="Secret Scanner"
+    )
+
+    parser.add_argument(
+        "path",
+        help="File or directory"
+    )
+
+    args = parser.parse_args()
+
+    logging.info("Scan Started")
+
+    if os.path.isfile(args.path):
+        results = scan_file(args.path)
+
+    elif os.path.isdir(args.path):
+        results = scan_directory(args.path)
+
+    else:
+        print("Invalid path")
+        return
+
+    report(results)
+
+    logging.info("Scan Finished")
+
+
+if __name__ == "__main__":
+    main()
